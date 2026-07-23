@@ -2,11 +2,22 @@
 
 # ================= 1. 基础环境检查 =================
 echo "🚀 正在检查系统环境..."
+
+# 检查 Python3 是否可用
 if ! command -v python3 &> /dev/null; then
     echo "❌ 未检测到 Python3，正在尝试安装..."
-    apt update && apt install -y python3-pip python3-venv git
+    # 【修改点1】增加 sudo 提权，确保 apt 能正常执行
+    # 【修改点2】显式加入 python3-venv，这是 Debian 12 创建虚拟环境的必要包
+    sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
 else
     echo "✅ Python3 已安装"
+    
+    # 【新增逻辑】即使有 Python3，也强制检查 venv 模块是否存在
+    # 很多 Debian 12 系统自带 python3 但缺少 venv，这会导致后续脚本报错
+    if ! python3 -m venv --help &> /dev/null; then
+        echo "⚠️ 检测到缺少 venv 模块 (Debian 12 常见问题)，正在补装..."
+        sudo apt update && sudo apt install -y python3-venv
+    fi
 fi
 
 # ================= 2. 创建工作目录 =================
