@@ -292,7 +292,7 @@ with gr.Blocks(title="VPS 神车监控面板") as app:
             gr.Markdown("### 📬 Telegram 设置")
             gr.Markdown("⚠️ **请在此处输入你的 Token 和 Chat ID，配置后自动监控才会生效。**")
             tg_token_input = gr.Textbox(label="Bot Token", placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", type="password")
-            tg_chat_id_input = gr.Textbox(label="Chat ID", placeholder="8918146597")
+            tg_chat_id_input = gr.Textbox(label="Chat ID", placeholder="0123456789")
             save_tg_btn = gr.Button("💾 保存 Telegram 配置", variant="primary")
             tg_config_status = gr.Textbox(label="配置状态", interactive=False)
 
