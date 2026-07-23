@@ -1,22 +1,25 @@
 #!/bin/bash
 
-# ================= 1. 基础环境检查 =================
+# ================= 1. 基础环境检查与修复 =================
 echo "🚀 正在检查系统环境..."
 
 # 检查 Python3 是否可用
 if ! command -v python3 &> /dev/null; then
     echo "❌ 未检测到 Python3，正在尝试安装..."
-    # 【修改点1】增加 sudo 提权，确保 apt 能正常执行
-    # 【修改点2】显式加入 python3-venv，这是 Debian 12 创建虚拟环境的必要包
-    sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
+    sudo apt update && sudo apt install -y python3 python3-pip python3.11-venv git
 else
     echo "✅ Python3 已安装"
     
-    # 【新增逻辑】即使有 Python3，也强制检查 venv 模块是否存在
-    # 很多 Debian 12 系统自带 python3 但缺少 venv，这会导致后续脚本报错
-    if ! python3 -m venv --help &> /dev/null; then
+    # 核心修复：针对 Debian 12 强制检查并安装 python3.11-venv
+    if ! python3 -c "import venv" &> /dev/null; then
         echo "⚠️ 检测到缺少 venv 模块 (Debian 12 常见问题)，正在补装..."
-        sudo apt update && sudo apt install -y python3-venv
+        sudo apt update
+        sudo apt install -y python3.11-venv || {
+            echo "❌ 关键依赖安装失败！请手动运行: sudo apt install python3.11-venv"
+            exit 1
+        }
+    else
+        echo "✅ venv 模块已就绪"
     fi
 fi
 
@@ -40,7 +43,7 @@ echo "📦 正在安装依赖库..."
 pip install --upgrade pip
 pip install gradio requests pandas apscheduler aiogram aiohttp openpyxl
 
-# ================= 5. 生成代码文件 (已移除默认值，改为后台配置) =================
+# ================= 5. 生成代码文件 (安全版) =================
 cat > server_ui.py << 'EOF'
 import gradio as gr
 import requests
@@ -53,11 +56,10 @@ from aiogram import Bot
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # ================= 1. 全局配置与防重复机制 =================
-# 【核心修改】移除了默认值，初始化为空字符串
+# 敏感信息全部留空，由后台配置
 TG_BOT_TOKEN = ""
 TG_CHAT_ID = ""
 
-PROXY_URL = "http://127.0.0.1:7897"
 DEFAULT_MAX_MONTHLY_RENEW = 15.0
 DEFAULT_MIN_RAM = 1
 DEFAULT_CHECK_INTERVAL = 60
@@ -195,10 +197,9 @@ def process_and_filter(max_price, min_ram, max_monthly_renew, region, keyword, p
     finally:
         is_processing = False
 
-# ================= 4. Telegram 推送功能 =================
+# ================= 4. Telegram 推送功能 (5条分批) =================
 async def send_telegram(df):
     if df is None or df.empty: return "⚠️ 没有数据可以推送。"
-    # 【核心修改】检查是否为空
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         return "❌ 请先在后台【Telegram 设置】中配置 Token 和 Chat ID！"
     try:
@@ -243,7 +244,6 @@ async def send_telegram(df):
 def auto_monitor_job():
     print(f"[{time.strftime('%H:%M:%S')}] ⏱️ 自动轮询开始...")
     try:
-        # 【核心修改】如果未配置，则跳过自动推送
         if not TG_BOT_TOKEN or not TG_CHAT_ID:
             print("⚠️ 未配置 Telegram 信息，自动监控暂停。")
             return
@@ -287,7 +287,6 @@ with gr.Blocks(title="VPS 神车监控面板") as app:
             update_bg_btn = gr.Button("🔄 更新后台监控配置", variant="secondary")
             bg_status = gr.Textbox(label="后台状态", interactive=False)
 
-            # 【核心修改】新增 Telegram 设置模块
             gr.Markdown("---")
             gr.Markdown("### 📬 Telegram 设置")
             gr.Markdown("⚠️ **请在此处输入你的 Token 和 Chat ID，配置后自动监控才会生效。**")
@@ -323,7 +322,6 @@ with gr.Blocks(title="VPS 神车监控面板") as app:
             else: return "❌ 后台任务未找到，请重启程序。"
         except Exception as e: return f"❌ 更新失败: {str(e)}"
 
-    # 【核心修改】新增保存配置的函数
     def save_telegram_config(token, chat_id):
         global TG_BOT_TOKEN, TG_CHAT_ID
         if token and chat_id:
@@ -337,18 +335,16 @@ with gr.Blocks(title="VPS 神车监控面板") as app:
     export_btn.click(fn=export_to_excel, inputs=[result_table], outputs=[export_msg])
     tg_btn.click(fn=lambda df: asyncio.run(send_telegram(df)), inputs=[result_table], outputs=[tg_msg])
     update_bg_btn.click(fn=update_background_job, inputs=[bg_max_renew, bg_min_ram, bg_interval], outputs=[bg_status])
-    # 【核心修改】绑定保存按钮
     save_tg_btn.click(fn=save_telegram_config, inputs=[tg_token_input, tg_chat_id_input], outputs=[tg_config_status])
 
 if __name__ == "__main__":
     app.launch(theme=gr.themes.Soft(), share=False, server_name="0.0.0.0", server_port=7860)
 EOF
 
-# ================= 6. 启动应用 =================
+# ================= 7. 启动应用 =================
 echo "🚀 正在启动 VPS 监控面板..."
-echo "访问地址: http://你的VPS_IP:7860"
-
 nohup python3 server_ui.py > app.log 2>&1 &
 
 echo "✅ 部署完成！"
-echo "日志查看命令: tail -f app.log"
+echo "🌐 访问地址: http://$(hostname -I | awk '{print $1}'):7860"
+echo "📄 日志查看命令: tail -f app.log"
